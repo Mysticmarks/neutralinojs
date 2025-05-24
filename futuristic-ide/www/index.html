@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Futuristic IDE</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --dark-bg: #0A192F;
+      --primary-accent: #64FFDA; /* Teal */
+      --secondary-accent: #00BFA5; /* Lighter Teal */
+      --text-color: #CCD6F6; /* Light Gray/Off-white */
+      --border-color: var(--primary-accent);
+      --glow-effect: 0 0 8px var(--primary-accent), 0 0 12px var(--primary-accent);
+      --input-bg: #1D2A3A;
+      --button-text-dark: #0A192F;
+    }
+
+    body {
+      font-family: 'Roboto', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--dark-bg);
+      color: var(--text-color);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tab-bar {
+      background-color: var(--input-bg); /* Slightly lighter than main bg */
+      overflow: hidden;
+      border-bottom: 1px solid var(--border-color);
+      flex-shrink: 0;
+      box-shadow: var(--glow-effect);
+    }
+
+    .tab-bar button {
+      background-color: transparent;
+      float: left;
+      border: none;
+      outline: none;
+      cursor: pointer;
+      padding: 14px 18px;
+      transition: background-color 0.3s, color 0.3s, box-shadow 0.3s;
+      font-size: 16px;
+      color: var(--text-color);
+      border-right: 1px solid var(--dark-bg); /* Separator */
+    }
+
+    .tab-bar button:last-child {
+      border-right: none;
+    }
+
+    .tab-bar button:hover {
+      background-color: var(--secondary-accent);
+      color: var(--button-text-dark);
+      box-shadow: 0 0 5px var(--secondary-accent);
+    }
+
+    .tab-bar button.active {
+      background-color: var(--primary-accent);
+      color: var(--button-text-dark);
+      font-weight: bold;
+      box-shadow: inset 0 0 5px var(--button-text-dark), var(--glow-effect);
+    }
+
+    .tab-content-container {
+      flex-grow: 1;
+      overflow-y: auto;
+      padding: 10px; /* Padding for the container */
+      background-color: var(--dark-bg); /* Ensure container matches body */
+    }
+
+    .tab-content {
+      display: none;
+      padding: 15px; /* Padding inside each tab */
+      background-color: var(--input-bg); /* Slightly lighter bg for content area */
+      border: 1px solid var(--border-color);
+      border-top: none; /* Top border is handled by tab bar */
+      height: calc(100% - 30px); /* Adjust height considering padding */
+      box-shadow: var(--glow-effect);
+      border-radius: 0 0 5px 5px; /* Rounded bottom corners */
+    }
+    
+    #tab1.tab-content { /* Specific style for tab1 if it's flex */
+        display: flex; /* This will be overridden by JS on selection */
+    }
+
+
+    #loading {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 20px;
+        color: var(--text-color);
+    }
+
+    /* Styles for Live Preview in Tab 1 */
+    #tab1 {
+      display: flex; /* Default state in CSS, JS will manage this */
+      flex-direction: column;
+      height: 100%; 
+      box-sizing: border-box;
+    }
+
+    #html-input {
+      width: 100%; /* Full width within tab padding */
+      height: 40%; 
+      margin-bottom: 10px;
+      padding: 10px;
+      box-sizing: border-box;
+      border: 1px solid var(--border-color);
+      background-color: var(--dark-bg); /* Darker for input */
+      color: var(--text-color);
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      border-radius: 3px;
+    }
+    #html-input:focus {
+      outline: none;
+      box-shadow: var(--glow-effect);
+    }
+
+    #render-button {
+      padding: 10px 20px;
+      margin-bottom: 10px;
+      background-color: var(--primary-accent);
+      color: var(--button-text-dark);
+      border: none;
+      cursor: pointer;
+      width: fit-content;
+      align-self: flex-start;
+      font-weight: bold;
+      border-radius: 3px;
+      transition: background-color 0.3s, box-shadow 0.3s;
+    }
+
+    #render-button:hover {
+      background-color: var(--secondary-accent);
+      box-shadow: var(--glow-effect);
+    }
+
+    #live-preview-iframe {
+      width: 100%; /* Full width within tab padding */
+      height: 58%; /* Adjusted to fill remaining space */
+      border: 2px solid var(--border-color);
+      box-sizing: border-box;
+      background-color: #fff; /* Iframe content background will be white by default */
+      border-radius: 3px;
+      box-shadow: var(--glow-effect);
+    }
+    
+    /* Simple Scrollbar Styling */
+    ::-webkit-scrollbar {
+      width: 10px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--dark-bg);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--secondary-accent);
+      border-radius: 5px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--primary-accent);
+    }
+
+    /* Styles for other tabs for consistency */
+    #tab2, #tab3 {
+        color: var(--text-color); /* Ensure text color is consistent */
+    }
+    #tab2 h3, #tab3 h3 {
+        color: var(--primary-accent); /* Accent color for headings */
+    }
+
+  </style>
+</head>
+<body>
+
+  <div id="loading">Loading...</div>
+
+  <div class="tab-bar">
+    <button class="tab-button" onclick="openTab(event, 'tab1')">Live Preview</button>
+    <button class="tab-button" onclick="openTab(event, 'tab2')">Tab 2</button>
+    <button class="tab-button" onclick="openTab(event, 'tab3')">Tab 3</button>
+  </div>
+
+  <div class="tab-content-container">
+    <div id="tab1" class="tab-content">
+      <textarea id="html-input" placeholder="Enter HTML, CSS, and JavaScript here..."></textarea>
+      <button id="render-button">Render Preview</button>
+      <iframe id="live-preview-iframe"></iframe>
+    </div>
+
+    <div id="tab2" class="tab-content">
+      <h3>Tab 2</h3>
+      <p>This is the second tab. Content here will also follow the futuristic theme.</p>
+    </div>
+
+    <div id="tab3" class="tab-content">
+      <h3>Tab 3</h3>
+      <p>This is the third tab, styled with the new theme.</p>
+    </div>
+  </div>
+
+  <script src="/neutralino.js"></script>
+  <script>
+    function openTab(evt, tabName) {
+      let i, tabcontent, tabbuttons;
+      tabcontent = document.getElementsByClassName("tab-content");
+      for (i = 0; i < tabcontent.length; i++) {
+        // Reset display style for all tabs before setting the active one
+        if(tabcontent[i].id === 'tab1') {
+            tabcontent[i].style.display = "none"; // tab1 needs to be 'flex' when active
+        } else {
+            tabcontent[i].style.display = "none";
+        }
+      }
+      tabbuttons = document.getElementsByClassName("tab-button");
+      for (i = 0; i < tabbuttons.length; i++) {
+        tabbuttons[i].className = tabbuttons[i].className.replace(" active", "");
+      }
+      
+      const targetTab = document.getElementById(tabName);
+      if (targetTab) {
+        if (tabName === 'tab1') {
+            targetTab.style.display = "flex"; // Special display for tab1
+        } else {
+            targetTab.style.display = "block"; // Default for other tabs
+        }
+      }
+
+      if (evt && evt.currentTarget) {
+        evt.currentTarget.className += " active";
+      }
+    }
+
+    function initializeTabs() {
+        const loadingElement = document.getElementById('loading');
+        if(loadingElement) {
+            loadingElement.style.display = 'none';
+        }
+
+        const firstTabButton = document.getElementsByClassName("tab-button")[0];
+        const firstTabContentId = 'tab1'; // Assuming 'tab1' is always the first tab's ID
+
+        if(firstTabButton) {
+            // Open the first tab and mark its button as active
+            openTab({ currentTarget: firstTabButton }, firstTabContentId);
+        }
+    }
+    
+    function initializeLivePreview() {
+        const htmlInput = document.getElementById('html-input');
+        const renderButton = document.getElementById('render-button');
+        const iframe = document.getElementById('live-preview-iframe');
+
+        if (htmlInput && renderButton && iframe) {
+            renderButton.addEventListener('click', function() {
+                const combinedContent = htmlInput.value;
+                // Basic separation for CSS and JS if included in textarea.
+                // This is a simplified approach. A more robust solution would involve parsing.
+                let htmlContent = combinedContent;
+                let styleContent = '';
+                let scriptContent = '';
+
+                // Extract <style> tags
+                const styleMatch = combinedContent.match(/<style>([\s\S]*?)<\/style>/i);
+                if (styleMatch && styleMatch[1]) {
+                    styleContent = styleMatch[1];
+                    htmlContent = htmlContent.replace(styleMatch[0], ''); // Remove from HTML
+                }
+
+                // Extract <script> tags (non-src ones)
+                // Be cautious with this as it might pick up the main page's script if not careful
+                const scriptMatch = combinedContent.match(/<script(?![^>]*src)([^>]*)>([\s\S]*?)<\/script>/i);
+                if (scriptMatch && scriptMatch[2]) {
+                    scriptContent = scriptMatch[2];
+                    htmlContent = htmlContent.replace(scriptMatch[0], ''); // Remove from HTML
+                }
+                
+                iframe.srcdoc = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <style>${styleContent}</style>
+                    </head>
+                    <body>
+                        ${htmlContent}
+                        <script>${scriptContent}<\/script> 
+                    </body>
+                    </html>
+                `;
+            });
+            // Initial placeholder content for the iframe
+            iframe.srcdoc = `
+              <!DOCTYPE html><html><head><style>
+              body {
+                font-family: Arial, sans-serif; 
+                color: #ccc; 
+                background-color: #333; 
+                display: flex; 
+                justify-content: center; 
+                align-items: center; 
+                height: 100vh; 
+                margin: 0;
+              }
+              </style></head><body><div>Preview Area</div></body></html>`;
+
+        } else {
+            console.error("Live preview elements not found!");
+        }
+    }
+
+    Neutralino.init();
+
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeTabs();
+        initializeLivePreview();
+        // Ensure the first tab's content is correctly displayed after initialization
+        const firstTabButton = document.getElementsByClassName("tab-button")[0];
+        if (firstTabButton && firstTabButton.classList.contains('active')) {
+            const activeTabId = firstTabButton.getAttribute('onclick').match(/'([^']+)'/g)[1].replace(/'/g, '');
+             if (document.getElementById(activeTabId)) {
+                 if(activeTabId === 'tab1'){
+                    document.getElementById(activeTabId).style.display = "flex";
+                 } else {
+                    document.getElementById(activeTabId).style.display = "block";
+                 }
+             }
+        }
+    });
+
+  </script>
+</body>
+</html>
