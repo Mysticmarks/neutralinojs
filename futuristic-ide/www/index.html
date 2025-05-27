@@ -205,7 +205,15 @@
     </div>
   </div>
 
+  <div>
+    <input type="text" id="filenameInput" placeholder="Enter filename (e.g., index.html)">
+    <button id="viewFileButton">View File</button>
+    <pre id="fileContentOutput" style="background-color: var(--input-bg); border: 1px solid var(--border-color); padding: 10px; min-height: 100px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;"></pre>
+    <p id="errorMessage" style="color: red;"></p>
+  </div>
+
   <script src="/neutralino.js"></script>
+  <script src="js/app.js" defer></script>
   <script>
     function openTab(evt, tabName) {
       let i, tabcontent, tabbuttons;
