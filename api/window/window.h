@@ -8,6 +8,7 @@
 
 #if defined(__linux__) || defined(__FreeBSD__)
 #include <gtk/gtk.h>
+#include <type_traits>
 #define NEU_W_HANDLE GtkWidget*
 
 #elif defined(__APPLE__)
@@ -49,6 +50,7 @@ struct WindowOptions {
     bool fullScreen = false;
     bool alwaysOnTop = false;
     bool enableInspector = false;
+    bool openInspectorOnStartup = true;
     bool borderless= false;
     bool maximize = false;
     bool hidden = false;
@@ -59,6 +61,8 @@ struct WindowOptions {
     bool useSavedState = true;
     bool injectGlobals = false;
     bool injectClientLibrary = false;
+    bool skipTaskbar = false;
+    string webviewArgs = "";
     string title = "Neutralinojs";
     string url = "https://neutralino.js.org";
     string icon = "";
@@ -79,13 +83,23 @@ struct WindowMenuItem {
   void (*cb)(struct WindowMenuItem *);
 };
 
+#if defined(__linux__) || defined(__FreeBSD__)
+
+using WebKitWebView = struct _WebKitWebView;
+using WebKitPrintOperation = struct _WebKitPrintOperation;
+using WebKitPrintOperationResponse = struct _WebKitPrintOperationResponse;
+
+using webkit_print_operation_new_func = add_pointer<WebKitPrintOperation*(WebKitWebView*)>::type;
+using webkit_print_operation_run_dialog_func = add_pointer<WebKitPrintOperationResponse*(WebKitPrintOperation*, GtkWindow*)>::type; 
+
+#endif
+
 namespace handlers {
 
 void onClose();
 
 } // namespace handlers
 
-NEU_W_HANDLE getWindowHandle();
 bool isSavedStateLoaded();
 bool isMaximized();
 void maximize();
@@ -105,14 +119,17 @@ pair<int, int> getPosition();
 void center(bool useConfigSizes);
 void setAlwaysOnTop(bool onTop);
 void setBorderless();
+void setSkipTaskbar(bool skip);
 bool snapshot(const string &filename);
 void setMainMenu(const json &menu);
+bool init(const json &windowOptions);
 
 void _close(int exitCode);
 
+void beginDrag();
+
 namespace controllers {
 
-json init(const json &input);
 json setTitle(const json &input);
 json getTitle(const json &input);
 json maximize(const json &input);
@@ -137,6 +154,8 @@ json getPosition(const json &input);
 json setAlwaysOnTop(const json &input);
 json snapshot(const json &input);
 json setMainMenu(const json &input);
+json beginDrag(const json& input);
+json print(const json &input);
 
 } // namespace controllers
 

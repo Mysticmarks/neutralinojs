@@ -6,6 +6,7 @@
 #include <vector>
 #include <map>
 #include <set>
+#include <clocale>
 
 #include "lib/json/json.hpp"
 #include "settings.h"
@@ -33,6 +34,7 @@ string appPath;
 string systemDataPath;
 string appDataPath; // appPath or systemDataPath based on config.dataLocation
 string configFile = NEU_APP_CONFIG_FILE;
+string localeName;
 
 vector<settings::ConfigOverride> configOverrides;
 
@@ -57,6 +59,11 @@ string getConfigFile() {
 }
 
 bool init() {
+    #if defined(_WIN32)
+    localeName = helpers::wstr2str(_wsetlocale(LC_ALL, L""));
+    #else
+    localeName = setlocale(LC_ALL, "");
+    #endif
     options = json::object();
     json config;
     fs::FileReaderResult fileReaderResult = resources::getFile(configFile);
@@ -155,6 +162,8 @@ string getGlobalVars(){
     jsSnippet += "var NL_CMETHODS=" + helpers::jsonToString(json(custom::getMethods())) + ";";
     jsSnippet += "var NL_WSAVSTLOADED=" + helpers::jsonToString(json(window::isSavedStateLoaded())) + ";";
     jsSnippet += "var NL_CONFIGFILE='" + settings::getConfigFile() + "';";
+    jsSnippet += "var NL_LOCALE='" + localeName + "';";
+    jsSnippet += "var NL_COMPDATA='" + string(NEU_COMPILATION_DATA) + "';";
 
     json jGlobalVariables = settings::getOptionForCurrentMode("globalVariables");
     if(!jGlobalVariables.is_null()) {
@@ -191,9 +200,23 @@ void setGlobalArgs(const json &args) {
                 appPath = fs::getCurrentDirectory();
         }
 
-        // Resources read mode (resources.neu or from directory)
+        // DEPRECATED: Resources read mode (resources.neu or from directory)
         if(cliArg.key == "--load-dir-res") {
             resources::setMode(resources::ResourceModeDir);
+            continue;
+        }
+
+        // Resource mode (resources.neu, from directory or embedded)
+        if(cliArg.key == "--res-mode") {
+            if (cliArg.value == "directory") {
+                resources::setMode(resources::ResourceModeDir);
+            }
+            else if (cliArg.value == "bundle") {
+                resources::setMode(resources::ResourceModeBundle);
+            }
+            else if (cliArg.value == "embedded") {
+                resources::setMode(resources::ResourceModeEmbedded);
+            }
             continue;
         }
 
@@ -211,7 +234,7 @@ void setGlobalArgs(const json &args) {
 
         // Enable dev tools connection (as an extension)
         // Not available for production (resources.neu-based) apps
-        if(cliArg.key == "--neu-dev-extension" && !resources::isBundleMode()) {
+        if(cliArg.key == "--neu-dev-extension" && !resources::isBundleMode() && !resources::isEmbeddedMode()) {
             extensions::loadOne("js.neutralino.devtools");
             continue;
         }
@@ -271,6 +294,7 @@ void applyConfigOverride(const settings::CliArg &arg) {
         {"--window-full-screen", {"/modes/window/fullScreen", "bool"}},
         {"--window-always-on-top", {"/modes/window/alwaysOnTop", "bool"}},
         {"--window-enable-inspector", {"/modes/window/enableInspector", "bool"}},
+        {"--window-open-inspector-on-startup", {"/modes/window/openInspectorOnStartup", "bool"}},
         {"--window-borderless", {"/modes/window/borderless", "bool"}},
         {"--window-maximize", {"/modes/window/maximize", "bool"}},
         {"--window-hidden", {"/modes/window/hidden", "bool"}},
@@ -278,6 +302,7 @@ void applyConfigOverride(const settings::CliArg &arg) {
         {"--window-maximizable", {"/modes/window/maximizable", "bool"}},
         {"--window-center", {"/modes/window/center", "bool"}},
         {"--window-transparent", {"/modes/window/transparent", "bool"}},
+        {"--window-skip-taskbar", {"/modes/window/skipTaskbar", "bool"}},
         {"--window-exit-process-on-close", {"/modes/window/exitProcessOnClose", "bool"}},
         {"--window-use-saved-state", {"/modes/window/useSavedState", "bool"}},
         {"--window-icon", {"/modes/window/icon", "string"}},

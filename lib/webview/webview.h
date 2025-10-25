@@ -61,7 +61,6 @@
 #include <utility>
 #include <vector>
 #include <type_traits>
-
 #include <cstring>
 
 namespace webview {
@@ -134,28 +133,29 @@ using webkit_settings_get_user_agent_func = std::add_pointer<const char*(WebKitS
 using webkit_settings_set_user_agent_func = std::add_pointer<void(WebKitSettings*, const char*)>::type;
 using webkit_web_view_load_uri_func = std::add_pointer<void(WebKitWebView*, const char*)>::type;
 
-webkit_web_view_new_func webkit_web_view_new = nullptr;
-webkit_web_view_get_settings_func webkit_web_view_get_settings = nullptr;
-webkit_settings_set_javascript_can_access_clipboard_func webkit_settings_set_javascript_can_access_clipboard = nullptr;
-webkit_settings_set_enable_write_console_messages_to_stdout_func webkit_settings_set_enable_write_console_messages_to_stdout = nullptr;
-webkit_settings_set_enable_developer_extras_func webkit_settings_set_enable_developer_extras = nullptr;
-webkit_web_view_get_inspector_func webkit_web_view_get_inspector = nullptr;
-webkit_web_inspector_show_func webkit_web_inspector_show = nullptr;
-webkit_web_view_set_background_color_func webkit_web_view_set_background_color = nullptr;
-webkit_web_view_get_user_content_manager_func webkit_web_view_get_user_content_manager = nullptr;
-webkit_user_content_manager_add_script_func webkit_user_content_manager_add_script = nullptr;
-webkit_user_script_new_func webkit_user_script_new = nullptr;
-webkit_settings_get_user_agent_func webkit_settings_get_user_agent = nullptr;
-webkit_settings_set_user_agent_func webkit_settings_set_user_agent = nullptr;
-webkit_web_view_load_uri_func webkit_web_view_load_uri = nullptr;
-
 namespace webview {
 
+static webkit_web_view_new_func webkit_web_view_new = nullptr;
+static webkit_web_view_get_settings_func webkit_web_view_get_settings = nullptr;
+static webkit_settings_set_javascript_can_access_clipboard_func webkit_settings_set_javascript_can_access_clipboard = nullptr;
+static webkit_settings_set_enable_write_console_messages_to_stdout_func webkit_settings_set_enable_write_console_messages_to_stdout = nullptr;
+static webkit_settings_set_enable_developer_extras_func webkit_settings_set_enable_developer_extras = nullptr;
+static webkit_web_view_get_inspector_func webkit_web_view_get_inspector = nullptr;
+static webkit_web_inspector_show_func webkit_web_inspector_show = nullptr;
+static webkit_web_view_set_background_color_func webkit_web_view_set_background_color = nullptr;
+static webkit_web_view_get_user_content_manager_func webkit_web_view_get_user_content_manager = nullptr;
+static webkit_user_content_manager_add_script_func webkit_user_content_manager_add_script = nullptr;
+static webkit_user_script_new_func webkit_user_script_new = nullptr;
+static webkit_settings_get_user_agent_func webkit_settings_get_user_agent = nullptr;
+static webkit_settings_set_user_agent_func webkit_settings_set_user_agent = nullptr;
+static webkit_web_view_load_uri_func webkit_web_view_load_uri = nullptr;
+
 static bool gtkSupportsAlpha = true;
+static void *dlib = nullptr;
 
 class gtk_webkit_engine {
 public:
-  gtk_webkit_engine(bool debug, void *window, bool transparent)
+  gtk_webkit_engine(bool debug, bool openInspector, void *window, bool transparent, const std::string &args)
       : m_window(static_cast<GtkWidget *>(window)) {
 
     XInitThreads();
@@ -236,17 +236,17 @@ public:
       "libwebkit2gtk-4.1.so.0"
     };
 
-    void *dlib = nullptr;
-
     for(const auto &lib: libs) {
       dlib = dlopen(lib.c_str(), RTLD_LAZY);
 
-      if(dlib) break;
+      if(dlib) {
+        break;
+      }
     }
 
     if(!dlib) {
-      std::cerr << "ERR: libwebkit2gtk-4.0-37 or libwebkit2gtk-4.1-0 required to run Neutralinojs apps." << std::endl;
-      std::exit(1);
+      initCode = 1;
+      return;
     }
 
     webkit_web_view_new = (webkit_web_view_new_func)(dlsym(dlib, "webkit_web_view_new"));
@@ -264,6 +264,7 @@ public:
     webkit_settings_set_user_agent = (webkit_settings_set_user_agent_func)(dlsym(dlib, "webkit_settings_set_user_agent"));
     webkit_web_view_load_uri = (webkit_web_view_load_uri_func)(dlsym(dlib, "webkit_web_view_load_uri"));
 
+
     // Initialize webview widget
     m_webview = webkit_web_view_new();
 
@@ -280,8 +281,10 @@ public:
       webkit_settings_set_enable_write_console_messages_to_stdout(settings,
                                                                   true);
       webkit_settings_set_enable_developer_extras(settings, true);
-      WebKitWebInspector *inspector = webkit_web_view_get_inspector((WebKitWebView*)(m_webview));
-      webkit_web_inspector_show((WebKitWebInspector*)(inspector));
+      if (openInspector) {
+        WebKitWebInspector *inspector = webkit_web_view_get_inspector((WebKitWebView*)(m_webview));
+        webkit_web_inspector_show((WebKitWebInspector*)(inspector));
+      }
     }
 
     if(transparent) {
@@ -292,6 +295,7 @@ public:
     gtk_widget_show_all(m_window);
   }
   void *window() { return (void *)m_window; }
+  void *wv() { return (void *)m_webview; }
   void run() { gtk_main(); }
   void terminate(int exitCode = 0) {
     processExitCode = exitCode;
@@ -307,6 +311,10 @@ public:
                     [](void *f) { delete static_cast<dispatch_fn_t *>(f); });
   }
 
+  void *dl() {
+    return dlib;
+  }
+
   void init(const std::string js) {
     WebKitUserContentManager *manager =
       webkit_web_view_get_user_content_manager((WebKitWebView*)(m_webview));
@@ -318,6 +326,7 @@ public:
 
   void set_title(const std::string title) {
     gtk_window_set_title(GTK_WINDOW(m_window), title.c_str());
+
   }
 
   void extend_user_agent(const std::string customAgent) {
@@ -364,6 +373,9 @@ public:
     webkit_web_view_load_uri((WebKitWebView*)(m_webview), url.c_str());
   }
 
+protected:
+  int initCode = 0;
+
 private:
   GtkWidget *m_window;
   GtkWidget *m_webview;
@@ -396,6 +408,7 @@ using browser_engine = gtk_webkit_engine;
 #define NSWindowStyleMaskClosable 2
 
 #define NSApplicationActivationPolicyRegular 0
+#define NSApplicationActivationPolicyAccessory 1
 
 #define WKUserScriptInjectionTimeAtDocumentStart 0
 
@@ -411,7 +424,7 @@ id operator"" _str(const char *s, std::size_t) {
 
 class cocoa_wkwebview_engine {
 public:
-  cocoa_wkwebview_engine(bool debug, void *window, bool transparent) {
+  cocoa_wkwebview_engine(bool debug, bool openInspector, void *window, bool transparent, const std::string &args) {
     // Application
     id app = ((id(*)(id, SEL))objc_msgSend)("NSApplication"_cls,
                                             "sharedApplication"_sel);
@@ -552,6 +565,7 @@ public:
   }
   ~cocoa_wkwebview_engine() { close(); }
   void *window() { return (void *)m_window; }
+  void *wv() { return (void *)m_webview; }
   void terminate(int exitCode = 0) {
     close();
     ((void (*)(id, SEL, id))objc_msgSend)("NSApp"_cls, "terminate:"_sel,
@@ -657,6 +671,10 @@ public:
                                            "requestWithURL:"_sel, nsurl));
   }
 
+
+protected:
+  int initCode = 0;
+
 private:
   void close() { ((void (*)(id, SEL))objc_msgSend)(m_window, "close"_sel); }
   id m_window;
@@ -688,13 +706,6 @@ using browser_engine = cocoa_wkwebview_engine;
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "Shlwapi.lib")
 
-// EdgeHTML headers and libs
-#include <objbase.h>
-#include <winrt/Windows.Foundation.Collections.h>
-#include <winrt/Windows.Foundation.h>
-#include <winrt/Windows.Web.UI.Interop.h>
-#pragma comment(lib, "windowsapp")
-
 // Edge/Chromium headers and libs
 #include "webview2.h"
 #pragma comment(lib, "ole32.lib")
@@ -712,91 +723,39 @@ using browser_engine = cocoa_wkwebview_engine;
 
 namespace webview {
 
-// Common interface for EdgeHTML and Edge/Chromium
-class browser {
+class edge_chromium {
 public:
-  virtual ~browser() = default;
-  virtual bool embed(HWND, bool) = 0;
-  virtual void navigate(const std::string url) = 0;
-  virtual void init(const std::string js) = 0;
-  virtual void extend_user_agent(const std::string customAgent) = 0;
-  virtual void resize(HWND) = 0;
-};
-
-//
-// EdgeHTML browser engine
-//
-using namespace winrt;
-using namespace Windows::Foundation;
-using namespace Windows::Web::UI;
-using namespace Windows::Web::UI::Interop;
-
-class edge_html : public browser {
-public:
-  bool embed(HWND wnd, bool debug) override {
-    init_apartment(winrt::apartment_type::single_threaded);
-    auto process = WebViewControlProcess();
-    auto op = process.CreateWebViewControlAsync(reinterpret_cast<int64_t>(wnd),
-                                                Rect());
-    if (op.Status() != AsyncStatus::Completed) {
-      handle h(CreateEvent(nullptr, false, false, nullptr));
-      op.Completed([h = h.get()](auto, auto) { SetEvent(h); });
-      HANDLE hs[] = {h.get()};
-      DWORD i;
-      CoWaitForMultipleHandles(COWAIT_DISPATCH_WINDOW_MESSAGES |
-                                   COWAIT_DISPATCH_CALLS |
-                                   COWAIT_INPUTAVAILABLE,
-                               INFINITE, 1, hs, &i);
-    }
-    m_webview = op.GetResults();
-    m_webview.IsVisible(true);
-    return true;
-  }
-
-  void navigate(const std::string url) override {
-    Uri uri(winrt::to_hstring(url));
-    m_webview.Navigate(uri);
-  }
-
-  void init(const std::string js) override {}
-  void extend_user_agent(const std::string customAgent) {}
-
-  void resize(HWND wnd) override {
-    if (m_webview == nullptr) {
-      return;
-    }
-    RECT r;
-    GetClientRect(wnd, &r);
-    Rect bounds(r.left, r.top, r.right - r.left, r.bottom - r.top);
-    m_webview.Bounds(bounds);
-  }
-
-private:
-  WebViewControl m_webview = nullptr;
-};
-
-//
-// Edge/Chromium browser engine
-//
-class edge_chromium : public browser {
-public:
-  bool embed(HWND wnd, bool debug) override {
+  bool embed(HWND wnd, bool debug, bool openInspector) {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     std::atomic_flag flag = ATOMIC_FLAG_INIT;
     flag.test_and_set();
 
-    char currentExePath[MAX_PATH];
-    GetModuleFileNameA(NULL, currentExePath, MAX_PATH);
-    char *currentExeName = PathFindFileNameA(currentExePath);
+    // Use Unicode APIs to properly handle special characters in paths
+    wchar_t currentExePath[MAX_PATH];
+    GetModuleFileNameW(NULL, currentExePath, MAX_PATH);
+    wchar_t *currentExeName = PathFindFileNameW(currentExePath);
 
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> wideCharConverter;
-    std::wstring userDataFolder =
-        wideCharConverter.from_bytes(std::getenv("APPDATA"));
-    std::wstring currentExeNameW = wideCharConverter.from_bytes(currentExeName);
+    // Get APPDATA with proper null check and fallback
+    wchar_t* appdataEnv = _wgetenv(L"APPDATA");
+    std::wstring userDataFolder;
+    if (appdataEnv) {
+        userDataFolder = std::wstring(appdataEnv);
+    } else {
+        // Fallback to temp directory if APPDATA is not available
+        wchar_t tempPath[MAX_PATH];
+        GetTempPathW(MAX_PATH, tempPath);
+        userDataFolder = std::wstring(tempPath);
+    }
+    std::wstring currentExeNameW = currentExeName ? std::wstring(currentExeName) : L"neutralino";
+
+    // Ensure the user data folder path is properly formatted
+    if (!userDataFolder.empty() && userDataFolder.back() != L'\\' && userDataFolder.back() != L'/') {
+        userDataFolder += L"\\";
+    }
 
     HRESULT res = CreateCoreWebView2EnvironmentWithOptions(
         nullptr,
-        (userDataFolder + L"/" + currentExeNameW).c_str(),
+        (userDataFolder + currentExeNameW).c_str(),
         nullptr,
         new webview2_com_handler(wnd, [&](ICoreWebView2Controller* controller) {
             m_controller = controller;
@@ -807,7 +766,8 @@ public:
             m_webview->get_Settings(&m_settings);
             if (debug) {
                 m_settings->put_AreDevToolsEnabled(TRUE);
-                m_webview->OpenDevToolsWindow();
+                if (openInspector)
+                  m_webview->OpenDevToolsWindow();
             }
             else {
                 m_settings->put_AreDevToolsEnabled(FALSE);
@@ -828,13 +788,13 @@ public:
     return true;
   }
 
-  void init(const std::string js) override {
+  void init(const std::string js) {
     LPCWSTR wjs = to_lpwstr(js);
     m_webview->AddScriptToExecuteOnDocumentCreated(wjs, nullptr);
     delete[] wjs;
   }
 
-  void extend_user_agent(const std::string customAgent) override {
+  void extend_user_agent(const std::string customAgent) {
     ICoreWebView2Settings *settings = nullptr;
     m_webview->get_Settings(&settings);
     ICoreWebView2Settings2 *settings2 = nullptr;
@@ -848,7 +808,7 @@ public:
     CoTaskMemFree(ua);
   }
 
-  void resize(HWND wnd) override {
+  void resize(HWND wnd) {
     if (m_controller == nullptr) {
       return;
     }
@@ -857,10 +817,14 @@ public:
     m_controller->put_Bounds(bounds);
   }
 
-  void navigate(const std::string url) override {
+  void navigate(const std::string url) {
     auto wurl = to_lpwstr(url);
     m_webview->Navigate(wurl);
     delete[] wurl;
+  }
+
+  void *wv() {
+    return (void *)m_webview;
   }
 
 private:
@@ -939,7 +903,11 @@ private:
 
 class win32_edge_engine {
 public:
-  win32_edge_engine(bool debug, void *window, bool transparent) {
+  win32_edge_engine(bool debug, bool openInspector, void *window, bool transparent, const std::string& args) {
+    if(args != "") {
+        std::wstring wargs = str2wstr(args);
+        SetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", wargs.c_str());
+    }
     if (window == nullptr) {
       HINSTANCE hInstance = GetModuleHandle(nullptr);
       HICON icon = (HICON)LoadImage(
@@ -1081,9 +1049,8 @@ public:
     // set dark mode of title bar according to system theme
     TrySetWindowTheme(m_window);
 
-    if (!m_browser->embed(m_window, debug)) {
-      m_browser = std::make_unique<webview::edge_html>();
-      m_browser->embed(m_window, debug);
+    if (!m_browser->embed(m_window, debug, openInspector)) {
+      initCode = 1;
     }
 
     m_browser->resize(m_window);
@@ -1109,6 +1076,7 @@ public:
     }
   }
   void *window() { return (void *)m_window; }
+  void *wv() { return (void *)m_browser->wv(); }
   void terminate(int exitCode = 0) {
 
     // event to wait for window close completion
@@ -1187,6 +1155,9 @@ public:
 
   DWORD m_originalStyleEx;
 
+protected:
+  int initCode = 0;
+
 private:
 
   void setDpi() {
@@ -1203,7 +1174,7 @@ private:
   POINT m_minsz = POINT{0, 0};
   POINT m_maxsz = POINT{0, 0};
   DWORD m_main_thread = GetCurrentThreadId();
-  std::unique_ptr<webview::browser> m_browser =
+  std::unique_ptr<webview::edge_chromium> m_browser =
       std::make_unique<webview::edge_chromium>();
 
   static std::wstring str2wstr(std::string const &str) {
@@ -1231,8 +1202,8 @@ namespace webview {
 
 class webview : public browser_engine {
 public:
-  webview(bool debug = false, void *wnd = nullptr, bool transparent = false)
-      : browser_engine(debug, wnd, transparent) {}
+  webview(bool debug = false, bool openInspector = true, void *wnd = nullptr, bool transparent = false, const std::string& args = "")
+      : browser_engine(debug, openInspector, wnd, transparent, args) {}
 
   void navigate(const std::string url) {
     browser_engine::navigate(url);
@@ -1240,6 +1211,10 @@ public:
 
   void setEventHandler(eventHandler_t handler) {
     windowStateChange = handler;
+  }
+
+  int get_init_code() {
+    return initCode;
   }
 
 };
